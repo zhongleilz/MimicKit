@@ -659,7 +659,7 @@ class IsaacLabEngine(engine.Engine):
         from isaacsim.core.utils.stage import get_current_stage
         
         sim_cfg = sim_utils.SimulationCfg(device=self._device, dt=sim_timestep,
-                                          render_interval=self._sim_steps)
+                                          render_interval=1)
         
         sim_cfg.physx.bounce_threshold_velocity = 0.2
         sim_cfg.physx.max_position_iteration_count = 4
