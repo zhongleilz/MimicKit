@@ -34,6 +34,12 @@ class SimEnv(base_env.BaseEnv):
 
         self._record_video = record_video
 
+        # Create video recorder after environment is fully initialized
+        # so it can query environment for camera config if needed
+        if self._record_video:
+            camera_config = self.get_video_camera_config()
+            self._engine.create_video_recorder(camera_config=camera_config)
+
         if self._visualize:
             self._build_camera(env_config)
             self._play_mode = PlayMode.PLAY
@@ -164,8 +170,6 @@ class SimEnv(base_env.BaseEnv):
 
     def _build_engine(self, engine_config, num_envs, device, visualize, record_video=False):
         engine = engine_builder.build_engine(engine_config, num_envs, device, visualize, record_video=record_video)
-        if record_video:
-            engine.create_video_recorder(camera_config=self.get_video_camera_config())
         return engine
     
     @abc.abstractmethod

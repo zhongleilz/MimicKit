@@ -34,7 +34,7 @@ class VideoRecorder:
         fps: Frames per second for the output video.
     """
 
-    VIDEO_CAM_PATH = "/World/VideoRecorderCamera"
+    VIDEO_CAM_PATH = "/OmniverseKit_Persp"  # Use viewport camera (works in headless mode)
 
     def __init__(self, engine: engine.Engine, camera_config: dict = {},
                  resolution: tuple[int, int] = (640, 480), fps: int = 30) -> None:
@@ -46,10 +46,8 @@ class VideoRecorder:
         self._cam_prim_path: str = self._build_camera()
 
         # Camera control (from camera_config dict)
-        cam_pos = camera_config.get("cam_pos", np.array([0.0, -5.0, 3.0]))
-        cam_target = camera_config.get("cam_target", np.array([0.0, 0.0, 0.0]))
-        self._cam_pos: np.ndarray = np.array(cam_pos, dtype=np.float32)
-        self._cam_target: np.ndarray = np.array(cam_target, dtype=np.float32)
+        self._cam_pos = camera_config.get("cam_pos", np.array([0.0, -5.0, 3.0]))
+        self._cam_target = camera_config.get("cam_target", np.array([0.0, 0.0, 0.0]))
 
         self._recorded_frames: list[np.ndarray] = []
         self._recording: bool = False
@@ -59,24 +57,14 @@ class VideoRecorder:
 
         self._logger_step_tracker: Any | None = None
 
-        # Initialize camera pose
-        self._set_camera_pose(self._cam_pos, self._cam_target)
-
         return
 
     def _build_camera(self) -> str:
-        """Create a dedicated camera prim for video recording, independent from visualization."""
-        import isaacsim.core.utils.prims as prim_utils
-        from omni.kit.viewport.utility.camera_state import ViewportCameraState
-
-        cam_path = self.VIDEO_CAM_PATH
-        stage = self._engine._stage
-        if not stage.GetPrimAtPath(cam_path).IsValid():
-            prim_utils.create_prim(cam_path, "Camera")
-            Logger.print("[VideoRecorder] Created dedicated video camera at {}".format(cam_path))
-
-        self._camera_state = ViewportCameraState(cam_path)
-        return cam_path
+        """Get ViewportCameraState for the viewport camera (shared with visualization)."""
+        # Use engine's camera state (viewport camera works in headless mode)
+        self._camera_state = self._engine._camera_state
+        Logger.print("[VideoRecorder] Using viewport camera at {}".format(self.VIDEO_CAM_PATH))
+        return self.VIDEO_CAM_PATH
 
     def set_logger_step_tracker(self, logger: Any) -> None:
         """
@@ -86,15 +74,16 @@ class VideoRecorder:
         return
 
     def _set_camera_pose(self, pos: np.ndarray, target: np.ndarray) -> None:
-        """Set the video camera pose, same interface as Camera.lookat() -> engine.set_camera_pose()."""
+        """Set the video camera pose using ViewportCameraState (same pattern as engine.set_camera_pose)."""
         env_offset = self._engine._env_offsets[0].cpu().numpy()
         cam_pos = pos.copy()
         cam_target = target.copy()
 
         cam_pos[:2] += env_offset
         cam_target[:2] += env_offset
-        self._camera_state.set_position_world(cam_pos, True)
-        self._camera_state.set_target_world(cam_target, True)
+        
+        self._camera_state.set_position_world(cam_pos.tolist(), True)
+        self._camera_state.set_target_world(cam_target.tolist(), True)
         return
 
     def _ensure_annotator(self) -> None:
@@ -113,9 +102,19 @@ class VideoRecorder:
         return
 
     def _capture_frame(self) -> None:
-        """Capture a single RGB frame from the viewport."""
+        """Capture a single RGB frame from the viewport.
+        
+        Saves and restores camera state to avoid conflicts with visualization.
+        """
         self._ensure_annotator()
 
+        # Save current camera state (in case visualization is active)
+        saved_pos = self._camera_state.position_world
+        saved_target = self._camera_state.target_world
+        
+        # Set video camera position
+        self._set_camera_pose(self._cam_pos, self._cam_target)
+        
         # Render the scene to update the viewport
         self._engine._sim.render()
 
@@ -128,6 +127,11 @@ class VideoRecorder:
             frame = frame[:, :, :3]  # drop alpha channel
 
         self._recorded_frames.append(frame)
+        
+        # Restore visualization camera state
+        self._camera_state.set_position_world(saved_pos, True)
+        self._camera_state.set_target_world(saved_target, True)
+        
         return
 
     def start_recording(self) -> None:
