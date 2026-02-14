@@ -1075,6 +1075,9 @@ class NewtonEngine(engine.Engine):
             callback()
         return
 
+    def create_video_recorder(self, camera_config=None):
+        raise NotImplementedError("Video recording not supported for Newton engine")
+
 
 @wp.kernel
 def clamp_arrays(x: wp.array(dtype=float),

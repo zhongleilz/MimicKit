@@ -7,7 +7,7 @@ import util.torch_util as torch_util
 
 
 class TaskSteeringEnv(amp_env.AMPEnv):
-    def __init__(self, env_config, engine_config, num_envs, device, visualize):
+    def __init__(self, env_config, engine_config, num_envs, device, visualize, record_video=False):
         self._rand_tar_dir = env_config.get("rand_tar_dir", True)
         self._rand_face_dir = env_config.get("rand_face_dir", True)
         self._tar_speed_min = env_config["tar_speed_min"]
@@ -21,7 +21,7 @@ class TaskSteeringEnv(amp_env.AMPEnv):
         self._reward_steering_vel_scale = float(env_config["reward_steering_vel_scale"])
 
         super().__init__(env_config=env_config, engine_config=engine_config,
-                         num_envs=num_envs, device=device, visualize=visualize)
+                         num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
         return
     
     def _build_envs(self, config, num_envs):

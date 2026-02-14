@@ -10,7 +10,7 @@ import util.stats_tracker as stats_tracker
 import util.torch_util as torch_util
 
 class DeepMimicEnv(char_env.CharEnv):
-    def __init__(self, env_config, engine_config, num_envs, device, visualize):
+    def __init__(self, env_config, engine_config, num_envs, device, visualize, record_video=False):
         self._enable_early_termination = env_config["enable_early_termination"]
         self._num_phase_encoding = env_config.get("num_phase_encoding", 0)
 
@@ -40,7 +40,7 @@ class DeepMimicEnv(char_env.CharEnv):
         self._visualize_ref_char = env_config.get("visualize_ref_char", True)
         
         super().__init__(env_config=env_config, engine_config=engine_config,
-                         num_envs=num_envs, device=device, visualize=visualize)
+                         num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
         return
     
     def get_reward_succ(self):

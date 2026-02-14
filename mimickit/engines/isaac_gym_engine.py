@@ -920,3 +920,6 @@ class IsaacGymEngine(engine.Engine):
                     callback = self._keyboard_callbacks[evt.action]
                     callback()
         return
+
+    def create_video_recorder(self, camera_config=None):
+        raise NotImplementedError("Video recording not supported for Isaac Gym engine")

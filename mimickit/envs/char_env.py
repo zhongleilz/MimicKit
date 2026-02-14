@@ -15,13 +15,13 @@ import util.torch_util as torch_util
 import engines.engine as engine
 
 class CharEnv(sim_env.SimEnv):
-    def __init__(self, env_config, engine_config, num_envs, device, visualize):
+    def __init__(self, env_config, engine_config, num_envs, device, visualize, record_video=False):
         self._global_obs = env_config["global_obs"]
         self._root_height_obs = env_config.get("root_height_obs", True)
         self._zero_center_action = env_config.get("zero_center_action", False)
         
         super().__init__(env_config=env_config, engine_config=engine_config,
-                         num_envs=num_envs, device=device, visualize=visualize)
+                         num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
         
         char_id = self._get_char_id()
         self._print_char_prop(0, char_id)
@@ -343,6 +343,21 @@ class CharEnv(sim_env.SimEnv):
     
     def _has_key_bodies(self):
         return len(self._key_body_ids) > 0
+
+    def get_video_camera_config(self) -> dict:
+        """Provide camera config for video recording."""
+        env_id = 0
+        char_id = self._get_char_id()
+        char_root_pos = self._engine.get_root_pos(char_id)
+        char_pos = char_root_pos[env_id].cpu().numpy()
+        
+        cam_pos = np.array([char_pos[0], char_pos[1] - 5.0, 3.0])
+        cam_target = np.array([char_pos[0], char_pos[1], 1.0])
+        
+        return {
+            "cam_pos": cam_pos,
+            "cam_target": cam_target,
+        }
 
     def _build_camera(self, env_config):
         env_id = 0

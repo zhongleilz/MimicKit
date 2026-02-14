@@ -1,4 +1,5 @@
 from isaaclab.app import AppLauncher
+from util.video_recorder import VideoRecorder
 
 import carb
 
@@ -59,9 +60,10 @@ class ObjCfg:
 
 
 class IsaacLabEngine(engine.Engine):
-    def __init__(self, config, num_envs, device, visualize):
+    def __init__(self, config, num_envs, device, visualize, record_video=False):
         super().__init__()
 
+        self.video_recorder = None
         self._device = device
         sim_freq = config.get("sim_freq", 60)
         control_freq = config.get("control_freq", 10)
@@ -72,7 +74,7 @@ class IsaacLabEngine(engine.Engine):
         self._sim_steps = int(sim_freq / control_freq)
         sim_timestep = 1.0 / sim_freq
 
-        self._create_simulator(sim_timestep, visualize)
+        self._create_simulator(sim_timestep, visualize, record_video)
 
         self._env_spacing = config["env_spacing"]
         self._obj_cfgs = []
@@ -86,15 +88,35 @@ class IsaacLabEngine(engine.Engine):
         self._build_ground()
         self._env_offsets = self._compute_env_offsets(num_envs)
 
+        if (visualize or record_video):
+            self._build_camera()
+            self._build_lights()
+
+        # Video recorder will be created after environment is initialized
+        # so it can query environment for camera config if needed
+        self._record_video = record_video
+
         if (visualize):
             self._prev_frame_time = 0.0
-            self._build_lights()
-            self._build_camera()
             self._build_draw_interface()
             self._setup_keyboard()
 
         return
+
+    def create_video_recorder(self, camera_config={}):
+        """Create the video recorder with optional camera configuration.
+        
+        Args:
+            camera_config: Optional camera config dict. If None, uses defaults.
+        """
+        self.video_recorder = VideoRecorder(self, camera_config)
+        
+        Logger.print("Video recording enabled")
+        return
     
+    def get_video_recorder(self):
+        return self.video_recorder
+
     def get_name(self):
         return "isaac_lab"
     
@@ -125,6 +147,9 @@ class IsaacLabEngine(engine.Engine):
     
     def step(self):
         self._update_reset_objs()
+        video_recorder = self.get_video_recorder()
+        if video_recorder is not None:
+            video_recorder.capture_frame()
         
         for i in range(self._sim_steps):
             self._pre_sim_step()
@@ -652,8 +677,17 @@ class IsaacLabEngine(engine.Engine):
         self._keyboard_callbacks = dict()
         return
     
-    def _create_simulator(self, sim_timestep, visualize):
-        self._app_launcher = AppLauncher({"headless": not visualize, "device": self._device})
+    def _create_simulator(self, sim_timestep, visualize, record_video=False):
+        # Headless rendering (record_video without a display) requires a virtual display
+        if record_video and not visualize:
+            from util.display import ensure_virtual_display
+            ensure_virtual_display()
+
+        self._app_launcher = AppLauncher({
+            "headless": not visualize,
+            "device": self._device,
+            "enable_cameras": record_video or visualize,
+        })
 
         import isaaclab.sim as sim_utils
         from isaacsim.core.utils.stage import get_current_stage
@@ -727,7 +761,7 @@ class IsaacLabEngine(engine.Engine):
 
     def _clear_forces(self):
         for obj in self._objs:
-            if (obj.has_external_wrench):
+            if (getattr(obj, 'has_external_wrentch', False)):
                 forces = torch.zeros([1, 3], dtype=torch.float, device=self._device)
                 torques = torch.zeros([1, 3], dtype=torch.float, device=self._device)
                 obj.set_external_force_and_torque(forces=forces, torques=torques,
@@ -1157,4 +1191,14 @@ class IsaacLabEngine(engine.Engine):
             if (event.input in self._keyboard_callbacks):
                 callback = self._keyboard_callbacks[event.input]
                 callback()
+        return
+
+    def pre_rollout_test(self):
+        if self._record_video:
+            self.video_recorder.start_recording()
+        return
+    
+    def post_rollout_test(self):
+        if self._record_video:
+            self.video_recorder.stop_recording()
         return

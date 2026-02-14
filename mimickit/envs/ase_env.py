@@ -4,11 +4,11 @@ import envs.amp_env as amp_env
 import envs.char_env as char_env
 
 class ASEEnv(amp_env.AMPEnv):
-    def __init__(self, env_config, engine_config, num_envs, device, visualize):
+    def __init__(self, env_config, engine_config, num_envs, device, visualize, record_video=False):
         self._default_reset_prob = env_config["default_reset_prob"]
 
         super().__init__(env_config=env_config, engine_config=engine_config, 
-                         num_envs=num_envs, device=device, visualize=visualize)
+                         num_envs=num_envs, device=device, visualize=visualize, record_video=record_video)
         return
     
     def _reset_char(self, env_ids):

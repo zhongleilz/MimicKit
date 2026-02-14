@@ -54,6 +54,10 @@ class BaseAgent(torch.nn.Module):
         out_model_file = os.path.join(out_dir, "model.pt")
         log_file = os.path.join(out_dir, "log.txt")
         self._logger = self._build_logger(logger_type, log_file, self._config)
+        
+        # Set logger on video recorder if it exists in the engine
+        if self._env._engine.get_video_recorder():
+            self._env._engine.video_recorder.set_logger_step_tracker(self._logger)
 
         if (save_int_models):
             int_out_dir = os.path.join(out_dir, "int_models")
@@ -90,6 +94,8 @@ class BaseAgent(torch.nn.Module):
         return
 
     def test_model(self, num_episodes):
+        Logger.print("[BaseAgent] Testing model for {} episodes".format(num_episodes))
+        
         self.eval()
         self.set_mode(AgentMode.TEST)
         
@@ -283,6 +289,8 @@ class BaseAgent(torch.nn.Module):
     def _rollout_test(self, num_episodes):
         self._test_return_tracker.reset()
 
+        self._env._engine.pre_rollout_test()
+
         if (num_episodes == 0):
             test_info = {
                 "mean_return": 0.0,
@@ -314,6 +322,9 @@ class BaseAgent(torch.nn.Module):
                 "mean_ep_len": test_ep_len.item(),
                 "num_eps": self._test_return_tracker.get_episodes()
             }
+
+        self._env._engine.post_rollout_test()
+
         return test_info
 
     @abc.abstractmethod

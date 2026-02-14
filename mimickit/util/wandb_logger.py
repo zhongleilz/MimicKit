@@ -83,3 +83,16 @@ class WandbLogger(logger.Logger):
             tags.append(curr_tags)
 
         return tags
+
+    def get_current_step(self) -> int:
+        """Get the current step value that would be used for wandb.log().
+
+        Returns the step value based on the step_key if set, otherwise returns row_count.
+        This matches the logic used in write_log().
+        """
+        step_val = self._row_count
+        if (self._step_key is not None):
+            entry = self.log_current_row.get(self._step_key, "")
+            if entry != "":
+                step_val = entry.val
+        return int(step_val)
