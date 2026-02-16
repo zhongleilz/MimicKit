@@ -512,8 +512,14 @@ class IsaacLabEngine(engine.Engine):
     def find_obj_body_id(self, obj_id, body_name):
         obj = self._objs[obj_id]
         meta_data = obj.root_physx_view.shared_metatype
-        body_names = meta_data.link_names
-        sim_body_id = body_names.index(body_name)
+        raw_body_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
+        norm_body_names = [self._normalize_body_name(n) for n in raw_body_names]
+
+        if (body_name in raw_body_names):
+            sim_body_id = raw_body_names.index(body_name)
+        else:
+            sim_body_id = norm_body_names.index(self._normalize_body_name(body_name))
+
         body_id = self._body_order_common2sim[obj_id][sim_body_id]
         return  body_id
     
@@ -538,10 +544,10 @@ class IsaacLabEngine(engine.Engine):
     def get_obj_body_names(self, obj_id):
         obj = self._objs[obj_id]
         meta_data = obj.root_physx_view.shared_metatype
-        body_names = meta_data.link_names
+        body_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
         body_order_sim2common = self._body_order_sim2common[obj_id]
 
-        body_names = [body_names[i] for i in body_order_sim2common.tolist()]
+        body_names = [self._normalize_body_name(body_names[i]) for i in body_order_sim2common.tolist()]
         return body_names
     
     def calc_obj_mass(self, env_id, obj_id):
@@ -1067,14 +1073,28 @@ class IsaacLabEngine(engine.Engine):
             parent_id = link_parent_indices.get(link_name)
             if (parent_id is not None):
                 link_children[parent_id].append(link_id)
-        
+
+        if (len(roots) == 0):
+            roots = [0]
+
         body_order_sim2common = []
+        visited = [False] * num_links
+
         def _dfs_children_links(link_id):
+            if (visited[link_id]):
+                return
+
+            visited[link_id] = True
             body_order_sim2common.append(link_id)
             child_ids = link_children[link_id]
             for child_id in child_ids:
                 _dfs_children_links(child_id)
-        _dfs_children_links(0)
+
+        for root_link_id in roots:
+            _dfs_children_links(root_link_id)
+
+        for link_id in range(num_links):
+            _dfs_children_links(link_id)
 
         dof_order_sim2common = []
         for link_id in body_order_sim2common[1:]:
