@@ -1069,13 +1069,9 @@ class IsaacLabEngine(engine.Engine):
 
         num_links = len(link_names)
         link_children = [[] for i in range(num_links)]
-        roots = []
-
         for link_id, link_name in enumerate(link_names):
             parent_id = link_parent_indices.get(link_name)
-            if (parent_id is None or parent_id < 0 or parent_id >= num_links):
-                roots.append(link_id)
-            else:
+            if (parent_id is not None):
                 link_children[parent_id].append(link_id)
 
         if (len(roots) == 0):
@@ -1120,33 +1116,18 @@ class IsaacLabEngine(engine.Engine):
         assert(False), "Missing metadata attrs {} in {}".format(candidate_names, type(meta_data))
 
     def _resolve_link_parent_indices(self, meta_data, link_names):
-        name_to_idx = {name: i for i, name in enumerate(link_names)}
-
         if hasattr(meta_data, "link_parent_indices"):
             parent_data = meta_data.link_parent_indices
             if isinstance(parent_data, dict):
-                parent_indices = {}
-                for key, value in parent_data.items():
-                    if isinstance(key, str) and key in name_to_idx:
-                        parent_indices[key] = int(value)
-                    elif isinstance(key, int) and key < len(link_names):
-                        parent_indices[link_names[key]] = int(value)
-                if (len(parent_indices) > 0):
-                    return parent_indices
+                return dict(parent_data)
 
-            parent_values = list(parent_data)
-            if (len(parent_values) > 0):
-                return {name: int(parent_values[i]) for i, name in enumerate(link_names)
-                        if i < len(parent_values)}
-
-        if hasattr(meta_data, "parent_indices"):
-            parent_values = list(meta_data.parent_indices)
-            if (len(parent_values) > 0):
-                return {name: int(parent_values[i]) for i, name in enumerate(link_names)
-                        if i < len(parent_values)}
+            parent_indices = list(parent_data)
+            return {name: parent_indices[i] for i, name in enumerate(link_names)
+                    if i < len(parent_indices) and parent_indices[i] >= 0}
 
         # Isaac Lab >=0.5x may omit explicit parent-index metadata.
         # Fallback to parsing hierarchy from slash-delimited link names.
+        name_to_idx = {name: i for i, name in enumerate(link_names)}
         parent_indices = {}
         for link_name in link_names:
             parent_name = os.path.dirname(link_name)
@@ -1157,9 +1138,6 @@ class IsaacLabEngine(engine.Engine):
             return {link_names[i]: i - 1 for i in range(1, len(link_names))}
 
         return parent_indices
-
-    def _normalize_body_name(self, body_name):
-        return os.path.basename(body_name)
 
     def _build_sim_tensors(self):
         num_envs = self.get_num_envs()
