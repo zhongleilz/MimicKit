@@ -233,8 +233,25 @@ class CharEnv(sim_env.SimEnv):
         sim_body_names = self._engine.get_obj_body_names(char_id)
         kin_body_names = self._kin_char_model.get_body_names()
 
-        for sim_name, kin_name in zip(sim_body_names, kin_body_names):
-            assert(sim_name == kin_name)
+        if (len(sim_body_names) != len(kin_body_names)):
+            Logger.print("[DEBUG][BodyValidation] body count mismatch: sim={} kin={}".format(len(sim_body_names), len(kin_body_names)))
+            Logger.print("[DEBUG][BodyValidation] sim bodies: {}".format(sim_body_names))
+            Logger.print("[DEBUG][BodyValidation] kin bodies: {}".format(kin_body_names))
+            assert(False), "Body count mismatch between sim and kinematic model"
+
+        mismatch_ids = []
+        for i, (sim_name, kin_name) in enumerate(zip(sim_body_names, kin_body_names)):
+            if (sim_name != kin_name):
+                mismatch_ids.append(i)
+
+        if (len(mismatch_ids) > 0):
+            Logger.print("[DEBUG][BodyValidation] found {} body-name mismatches".format(len(mismatch_ids)))
+            for i in mismatch_ids[:20]:
+                Logger.print("[DEBUG][BodyValidation] idx={} sim='{}' kin='{}'".format(i, sim_body_names[i], kin_body_names[i]))
+
+            Logger.print("[DEBUG][BodyValidation] sim bodies: {}".format(sim_body_names))
+            Logger.print("[DEBUG][BodyValidation] kin bodies: {}".format(kin_body_names))
+            assert(False), "Body name mismatch between sim and kinematic model"
         return
     
     def _get_char_id(self):
