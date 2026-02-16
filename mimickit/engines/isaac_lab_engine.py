@@ -1086,8 +1086,7 @@ class IsaacLabEngine(engine.Engine):
 
             visited[link_id] = True
             body_order_sim2common.append(link_id)
-            child_ids = link_children[link_id]
-            for child_id in child_ids:
+            for child_id in link_children[link_id]:
                 _dfs_children_links(child_id)
 
         for root_link_id in roots:
@@ -1098,13 +1097,22 @@ class IsaacLabEngine(engine.Engine):
 
         dof_order_sim2common = []
         for link_id in body_order_sim2common[1:]:
-            dof_offset = joint_dof_offsets[link_id - 1]
-            dof_count = joint_dof_counts[link_id - 1]
-            dof_indices = list(range(dof_offset, dof_offset + dof_count))
-            dof_order_sim2common += dof_indices
+            dof_idx = link_id - 1
+            if (dof_idx < len(joint_dof_offsets) and dof_idx < len(joint_dof_counts)):
+                dof_offset = int(joint_dof_offsets[dof_idx])
+                dof_count = int(joint_dof_counts[dof_idx])
+                if (dof_count > 0):
+                    dof_order_sim2common += list(range(dof_offset, dof_offset + dof_count))
 
-        body_order_common2sim = [body_order_sim2common.index(i) for i in range(len(body_order_sim2common))]
-        dof_order_common2sim = [dof_order_sim2common.index(i) for i in range(len(dof_order_sim2common))]
+        body_order_common2sim = [0] * len(body_order_sim2common)
+        for common_id, sim_id in enumerate(body_order_sim2common):
+            if (sim_id < len(body_order_common2sim)):
+                body_order_common2sim[sim_id] = common_id
+
+        dof_order_common2sim = [0] * len(dof_order_sim2common)
+        for common_id, sim_id in enumerate(dof_order_sim2common):
+            if (sim_id < len(dof_order_common2sim)):
+                dof_order_common2sim[sim_id] = common_id
 
         return body_order_sim2common, body_order_common2sim, dof_order_sim2common, dof_order_common2sim
 
