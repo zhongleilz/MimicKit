@@ -1056,17 +1056,16 @@ class IsaacLabEngine(engine.Engine):
     
     def _build_body_order(self, obj):
         meta_data = obj.root_physx_view.shared_metatype
-        link_names = meta_data.link_names
-        link_parent_indices = meta_data.link_parent_indices
-        joint_dof_counts = meta_data.joint_dof_counts
-        joint_dof_offsets = meta_data.joint_dof_offsets
+        link_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
+        joint_dof_counts = list(self._read_metadata_attr(meta_data, ["joint_dof_counts", "dof_counts"]))
+        joint_dof_offsets = list(self._read_metadata_attr(meta_data, ["joint_dof_offsets", "dof_offsets"]))
+        link_parent_indices = self._resolve_link_parent_indices(meta_data, link_names)
 
         num_links = len(link_names)
         link_children = [[] for i in range(num_links)]
-        for link_name in link_names:
-            if (link_name in link_parent_indices):
-                parent_id = link_parent_indices[link_name]
-                link_id = link_names.index(link_name)
+        for link_id, link_name in enumerate(link_names):
+            parent_id = link_parent_indices.get(link_name)
+            if (parent_id is not None):
                 link_children[parent_id].append(link_id)
         
         body_order_sim2common = []
@@ -1088,6 +1087,37 @@ class IsaacLabEngine(engine.Engine):
         dof_order_common2sim = [dof_order_sim2common.index(i) for i in range(len(dof_order_sim2common))]
 
         return body_order_sim2common, body_order_common2sim, dof_order_sim2common, dof_order_common2sim
+
+    def _read_metadata_attr(self, meta_data, candidate_names):
+        for name in candidate_names:
+            if hasattr(meta_data, name):
+                return getattr(meta_data, name)
+
+        assert(False), "Missing metadata attrs {} in {}".format(candidate_names, type(meta_data))
+
+    def _resolve_link_parent_indices(self, meta_data, link_names):
+        if hasattr(meta_data, "link_parent_indices"):
+            parent_data = meta_data.link_parent_indices
+            if isinstance(parent_data, dict):
+                return dict(parent_data)
+
+            parent_indices = list(parent_data)
+            return {name: parent_indices[i] for i, name in enumerate(link_names)
+                    if i < len(parent_indices) and parent_indices[i] >= 0}
+
+        # Isaac Lab >=0.5x may omit explicit parent-index metadata.
+        # Fallback to parsing hierarchy from slash-delimited link names.
+        name_to_idx = {name: i for i, name in enumerate(link_names)}
+        parent_indices = {}
+        for link_name in link_names:
+            parent_name = os.path.dirname(link_name)
+            if (parent_name != "" and parent_name in name_to_idx):
+                parent_indices[link_name] = name_to_idx[parent_name]
+
+        if (len(parent_indices) == 0):
+            return {link_names[i]: i - 1 for i in range(1, len(link_names))}
+
+        return parent_indices
 
     def _build_sim_tensors(self):
         num_envs = self.get_num_envs()
