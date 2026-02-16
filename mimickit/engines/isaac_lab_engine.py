@@ -512,8 +512,14 @@ class IsaacLabEngine(engine.Engine):
     def find_obj_body_id(self, obj_id, body_name):
         obj = self._objs[obj_id]
         meta_data = obj.root_physx_view.shared_metatype
-        body_names = meta_data.link_names
-        sim_body_id = body_names.index(body_name)
+        raw_body_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
+        norm_body_names = [self._normalize_body_name(n) for n in raw_body_names]
+
+        if (body_name in raw_body_names):
+            sim_body_id = raw_body_names.index(body_name)
+        else:
+            sim_body_id = norm_body_names.index(self._normalize_body_name(body_name))
+
         body_id = self._body_order_common2sim[obj_id][sim_body_id]
         return  body_id
     
@@ -538,10 +544,10 @@ class IsaacLabEngine(engine.Engine):
     def get_obj_body_names(self, obj_id):
         obj = self._objs[obj_id]
         meta_data = obj.root_physx_view.shared_metatype
-        body_names = meta_data.link_names
+        body_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
         body_order_sim2common = self._body_order_sim2common[obj_id]
 
-        body_names = [body_names[i] for i in body_order_sim2common.tolist()]
+        body_names = [self._normalize_body_name(body_names[i]) for i in body_order_sim2common.tolist()]
         return body_names
     
     def calc_obj_mass(self, env_id, obj_id):
@@ -1056,38 +1062,115 @@ class IsaacLabEngine(engine.Engine):
     
     def _build_body_order(self, obj):
         meta_data = obj.root_physx_view.shared_metatype
-        link_names = meta_data.link_names
-        link_parent_indices = meta_data.link_parent_indices
-        joint_dof_counts = meta_data.joint_dof_counts
-        joint_dof_offsets = meta_data.joint_dof_offsets
+        link_names = list(self._read_metadata_attr(meta_data, ["link_names"]))
+        joint_dof_counts = list(self._read_metadata_attr(meta_data, ["joint_dof_counts", "dof_counts"]))
+        joint_dof_offsets = list(self._read_metadata_attr(meta_data, ["joint_dof_offsets", "dof_offsets"]))
+        link_parent_indices = self._resolve_link_parent_indices(meta_data, link_names)
 
         num_links = len(link_names)
-        link_children = [[] for i in range(num_links)]
-        for link_name in link_names:
-            if (link_name in link_parent_indices):
-                parent_id = link_parent_indices[link_name]
-                link_id = link_names.index(link_name)
+        if (num_links == 0):
+            return [], [], [], []
+
+        link_children = [[] for _ in range(num_links)]
+        root_ids = []
+
+        for link_id, link_name in enumerate(link_names):
+            parent_id = link_parent_indices.get(link_name, -1)
+            if (parent_id is None or parent_id < 0 or parent_id >= num_links):
+                root_ids.append(link_id)
+            else:
                 link_children[parent_id].append(link_id)
-        
+
+        if (len(root_ids) == 0):
+            root_ids = [0]
+
         body_order_sim2common = []
+        visited = [False] * num_links
+
         def _dfs_children_links(link_id):
+            if (link_id < 0 or link_id >= num_links or visited[link_id]):
+                return
+
+            visited[link_id] = True
             body_order_sim2common.append(link_id)
-            child_ids = link_children[link_id]
-            for child_id in child_ids:
+            for child_id in link_children[link_id]:
                 _dfs_children_links(child_id)
-        _dfs_children_links(0)
+
+        for root_id in root_ids:
+            _dfs_children_links(root_id)
+
+        for link_id in range(num_links):
+            _dfs_children_links(link_id)
 
         dof_order_sim2common = []
         for link_id in body_order_sim2common[1:]:
-            dof_offset = joint_dof_offsets[link_id - 1]
-            dof_count = joint_dof_counts[link_id - 1]
-            dof_indices = list(range(dof_offset, dof_offset + dof_count))
-            dof_order_sim2common += dof_indices
+            dof_idx = link_id - 1
+            if (dof_idx < len(joint_dof_offsets) and dof_idx < len(joint_dof_counts)):
+                dof_offset = int(joint_dof_offsets[dof_idx])
+                dof_count = int(joint_dof_counts[dof_idx])
+                if (dof_count > 0):
+                    dof_order_sim2common += list(range(dof_offset, dof_offset + dof_count))
 
-        body_order_common2sim = [body_order_sim2common.index(i) for i in range(len(body_order_sim2common))]
-        dof_order_common2sim = [dof_order_sim2common.index(i) for i in range(len(dof_order_sim2common))]
+        body_order_common2sim = [0] * len(body_order_sim2common)
+        for common_id, sim_id in enumerate(body_order_sim2common):
+            if (sim_id < len(body_order_common2sim)):
+                body_order_common2sim[sim_id] = common_id
+
+        dof_order_common2sim = [0] * len(dof_order_sim2common)
+        for common_id, sim_id in enumerate(dof_order_sim2common):
+            if (sim_id < len(dof_order_common2sim)):
+                dof_order_common2sim[sim_id] = common_id
 
         return body_order_sim2common, body_order_common2sim, dof_order_sim2common, dof_order_common2sim
+
+    def _read_metadata_attr(self, meta_data, candidate_names):
+        for name in candidate_names:
+            if hasattr(meta_data, name):
+                return getattr(meta_data, name)
+
+        assert(False), "Missing metadata attrs {} in {}".format(candidate_names, type(meta_data))
+
+    def _resolve_link_parent_indices(self, meta_data, link_names):
+        name_to_idx = {name: i for i, name in enumerate(link_names)}
+
+        if hasattr(meta_data, "link_parent_indices"):
+            parent_data = meta_data.link_parent_indices
+            if isinstance(parent_data, dict):
+                parent_indices = {}
+                for key, value in parent_data.items():
+                    if isinstance(key, str) and key in name_to_idx:
+                        parent_indices[key] = int(value)
+                    elif isinstance(key, int) and key < len(link_names):
+                        parent_indices[link_names[key]] = int(value)
+                if (len(parent_indices) > 0):
+                    return parent_indices
+
+            parent_values = list(parent_data)
+            if (len(parent_values) > 0):
+                return {name: int(parent_values[i]) for i, name in enumerate(link_names)
+                        if i < len(parent_values)}
+
+        if hasattr(meta_data, "parent_indices"):
+            parent_values = list(meta_data.parent_indices)
+            if (len(parent_values) > 0):
+                return {name: int(parent_values[i]) for i, name in enumerate(link_names)
+                        if i < len(parent_values)}
+
+        # Isaac Lab >=0.5x may omit explicit parent-index metadata.
+        # Fallback to parsing hierarchy from slash-delimited link names.
+        parent_indices = {}
+        for link_name in link_names:
+            parent_name = os.path.dirname(link_name)
+            if (parent_name != "" and parent_name in name_to_idx):
+                parent_indices[link_name] = name_to_idx[parent_name]
+
+        if (len(parent_indices) == 0):
+            return {link_names[i]: i - 1 for i in range(1, len(link_names))}
+
+        return parent_indices
+
+    def _normalize_body_name(self, body_name):
+        return os.path.basename(body_name)
 
     def _build_sim_tensors(self):
         num_envs = self.get_num_envs()
